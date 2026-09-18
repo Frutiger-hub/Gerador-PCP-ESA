@@ -92,11 +92,11 @@ function makeReport(rep,mode){
 const r=rep.rows.map(function(x){return enrich({...x},rep.ref_date)}),c=count(r),doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"}),title=rep.multi_fase?"CONSOLIDADO MULTIFASE":"FASE "+rep.fase_num+" • "+rep.fase_nome,fileName="Relatorio_PCP_"+rep.file.replace(/[^a-z0-9_-]+/gi,"_")+"_"+mode+".pdf";
 const margin=8,contentW=doc.internal.pageSize.getWidth()-margin*2;
 function pageTitle(t){pdfHeader(doc,"RELATÓRIO PCP ESA",t+" • Ref. "+dateFmt(rep.ref_date))}
-function compactTable(head,body,rows,opts){opts=opts||{};return addTable(doc,head,body,rows,Object.assign({fontSize:6.0,cellPadding:1.45},opts))}
+function compactTable(head,body,rows,opts){opts=opts||{};return addTable(doc,head,body,rows,Object.assign({fontSize:6.45,cellPadding:1.5},opts))}
 function ensure(y,space,title){if(y+space>275){doc.addPage();pageTitle(title||titleBase);return 38}return y}
 const titleBase=title;
 pageTitle(title);
-doc.setFontSize(7.6);doc.text("Total: "+r.length+" | Atrasadas: "+c["Atrasada"]+" | Hoje: "+c["Vence hoje"]+" | Próx. 7 dias: "+c["Próximos 7 dias"]+" | Futuro: "+c["Prazo futuro"],margin,32);
+doc.setFontSize(7.8);doc.text("Total: "+r.length+" | Atrasadas: "+c["Atrasada"]+" | Hoje: "+c["Vence hoje"]+" | Próx. 7 dias: "+c["Próximos 7 dias"]+" | Futuro: "+c["Prazo futuro"],margin,32);
 
 if(mode==="completo"){
 let y=40;
