@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "index.html"
+      - "firebase-config.js"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
