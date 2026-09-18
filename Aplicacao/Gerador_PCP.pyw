@@ -997,7 +997,8 @@ def generate_pdf_enhanced(report, output_dir):
 
     os.makedirs(output_dir, exist_ok=True)
     source_name = Path(report["file"]).stem
-    phases = report.get("phases", [])    rows = report.get("rows", [])
+    phases = report.get("phases", [])
+    rows = report.get("rows", [])
     ref_date = report.get("ref_date") or (report.get("emissao").date() if report.get("emissao") else TODAY)
 
     safe_name = re.sub(
@@ -1997,6 +1998,7 @@ def filter_rows_by_selected_os(reports, os_text):
     wanted = set(numbers)
     if not wanted:
         return [], "Nenhuma O.S. válida informada"
+
     all_rows = []
     ref_dates = []
     for rep in reports:
@@ -2995,7 +2997,8 @@ class App(tk.Tk):
         tree.pack(side="left",fill="both",expand=True); sb.pack(side="right",fill="y")
         for i,r in enumerate(overdue):
             ref = r.get("_ref_date") or date.today()
-            late=_days_late(r, ref)            tree.insert("","end",iid=str(i),values=(r.get("Fase Num","-"),r.get("OS","-"),r.get("Cliente") or "N/I", f"{late or 0} d", r.get("Criticidade","-"), r.get("Motivo Atraso") or "Não informado"))
+            late=_days_late(r, ref)
+            tree.insert("","end",iid=str(i),values=(r.get("Fase Num","-"),r.get("OS","-"),r.get("Cliente") or "N/I", f"{late or 0} d", r.get("Criticidade","-"), r.get("Motivo Atraso") or "Não informado"))
         tree.bind("<<TreeviewSelect>>", self._on_delay_select)
 
         right=tk.Frame(panel,bg=c["surface"],width=420); right.pack(side="right",fill="y",padx=12,pady=10); right.pack_propagate(False)
