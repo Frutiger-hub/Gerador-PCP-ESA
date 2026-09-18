@@ -1,25 +1,52 @@
 # Gerador PCP ESA
 
-Aplicação desktop Windows para leitura de relatórios PDF da ESA e geração de relatórios gerenciais de PCP.
+Aplicação web do Gerador PCP ESA, baseada na V9.8.7.
 
-## Conteúdo
+## Uso
 
-- Aplicação V9.8.7
-- Interface desktop em português
-- Leitura de PDF
-- Relatórios PCP
-- Consultas de O.S.
-- Gestão de atrasos
+A aplicação web fica em `index.html` e é preparada para GitHub Pages.
+
+O navegador processa os PDFs ESA localmente usando PDF.js e gera os relatórios em PDF usando jsPDF + AutoTable.
+
+### Funcionalidades
+
+- Importação de um ou vários PDFs
+- Detecção de múltiplas fases
+- Manutenção da mesma O.S. em fases diferentes
+- Dashboard PCP
+- Relatório completo e resumido
+- Consultas PCP
+- Filtro de atrasadas por Dias na Fase ou Data de Entrega
+- Consulta de O.S. selecionadas
+- Gestão de atrasos por Fase + O.S.
+- Motivo, observação, responsável, ação e prazo
 - Histórico
-- Ícones e atalhos
-- Build automática para Windows pelo GitHub Actions
+- Colaborador
+- Coluna OBS nos relatórios
+- Armazenamento local no navegador
 
-## Executável
+## Publicação no GitHub Pages
 
-O workflow **Build Windows EXE** gera automaticamente `Gerador_PCP_ESA.exe` como artefato do GitHub Actions.
+O workflow `.github/workflows/pages.yml` já está no repositório.
 
-## Dependências
+Na primeira publicação, abra:
 
-O build usa Python 3.14, PyMuPDF e ReportLab. O usuário final não precisa instalar Python quando usar o EXE gerado.
+**Settings → Pages → Source: GitHub Actions**
 
-> O código-fonte e os recursos da versão 9.8.7 devem estar em `Aplicacao/` para o workflow produzir o EXE.
+Depois disso, os próximos pushes em `main` publicam o site automaticamente.
+
+A URL esperada é:
+
+`https://frutiger-hub.github.io/Gerador-PCP-ESA/`
+
+## Importante
+
+Esta primeira versão é estática e salva os dados no navegador em uso. Isso significa que atrasos e histórico não são compartilhados automaticamente entre computadores.
+
+Para dados centralizados entre vários usuários, será necessário adicionar um backend/banco externo sem deixar credenciais de escrita dentro do frontend.
+
+## Dependências carregadas pelo navegador
+
+- PDF.js 6.3.289
+- jsPDF 4.2.1
+- jsPDF AutoTable 5.0.8
