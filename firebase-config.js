@@ -1,11 +1,9 @@
-// Configuração pública do Firebase para o Gerador PCP ESA.
-// Cole aqui o objeto firebaseConfig fornecido pelo Firebase Console.
-// Não coloque chaves de servidor/service account neste arquivo.
 window.ESA_FIREBASE_CONFIG = {
-  apiKey: "COLOQUE_SUA_API_KEY",
-  authDomain: "COLOQUE_SEU_PROJECT_ID.firebaseapp.com",
-  projectId: "COLOQUE_SEU_PROJECT_ID",
-  storageBucket: "COLOQUE_SEU_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "COLOQUE_SEU_MESSAGING_SENDER_ID",
-  appId: "COLOQUE_SEU_APP_ID"
+  apiKey: "AIzaSyCQFuwhrGtFyDu-YTnPdVZlTuHHtHtKedA",
+  authDomain: "pcpe-2ba24.firebaseapp.com",
+  projectId: "pcpe-2ba24",
+  storageBucket: "pcpe-2ba24.firebasestorage.app",
+  messagingSenderId: "315635439734",
+  appId: "1:315635439734:web:25597618e06224d8a26757",
+  measurementId: "G-LTXH6495P4"
 };
