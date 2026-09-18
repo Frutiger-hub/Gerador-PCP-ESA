@@ -29,7 +29,24 @@ jobs:
       - name: Build EXE
         shell: powershell
         run: |
-          pyinstaller --noconfirm --clean --windowed --onefile --name Gerador_PCP_ESA --icon Aplicacao/icones/ESA_PCP.ico --add-data "Aplicacao/icones;icones" Aplicacao/Gerador_PCP.pyw
+          $args = @(
+            "--noconfirm",
+            "--clean",
+            "--windowed",
+            "--onefile",
+            "--name", "Gerador_PCP_ESA"
+          )
+
+          if (Test-Path "Aplicacao/icones/ESA_PCP.ico") {
+            $args += @("--icon", "Aplicacao/icones/ESA_PCP.ico")
+          }
+
+          if (Test-Path "Aplicacao/icones") {
+            $args += @("--add-data", "Aplicacao/icones;icones")
+          }
+
+          $args += "Aplicacao/Gerador_PCP.pyw"
+          pyinstaller @args
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
