@@ -90,78 +90,132 @@ function addTable(doc,head,body,rows,opts){opts=opts||{};autoTable(doc,{head:[he
 function addSectionTitle(doc,text,y){doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(31,78,120);doc.text(text,10,y);doc.setTextColor(30);return y+5}
 function previewPdf(doc,name,rows){const blob=doc.output("blob"),url=URL.createObjectURL(blob),win=window.open(url,"_blank");if(!win){toast("O navegador bloqueou a nova aba. Permita pop-ups para visualizar o PDF.");}else{try{win.focus()}catch(e){}}setTimeout(function(){URL.revokeObjectURL(url)},60000);state.history.push({when:new Date().toISOString(),files:name,type:"PDF",rows:rows||0});save()}
 function makeReport(rep,mode){
-const r=rep.rows.map(function(x){return enrich({...x},rep.ref_date)}),c=count(r),doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"}),title=rep.multi_fase?"CONSOLIDADO MULTIFASE":"FASE "+rep.fase_num+" • "+rep.fase_nome,fileName="Relatorio_PCP_"+rep.file.replace(/[^a-z0-9_-]+/gi,"_")+"_"+mode+".pdf";
-const margin=7,contentW=doc.internal.pageSize.getWidth()-margin*2;
-function pageTitle(t){pdfHeader(doc,"RELATÓRIO PCP ESA",t+" • Ref. "+dateFmt(rep.ref_date))}
-function compactTable(head,body,rows,opts){opts=opts||{};return addTable(doc,head,body,rows,Object.assign({fontSize:9.2,cellPadding:2.4},opts))}
-function ensure(y,space,title){if(y+space>185){doc.addPage();pageTitle(title||titleBase);return 38}return y}
-const titleBase=title;
-pageTitle(title);
-doc.setFontSize(13);doc.text("Total: "+r.length+" | Atrasadas: "+c["Atrasada"]+" | Hoje: "+c["Vence hoje"]+" | Próx. 7 dias: "+c["Próximos 7 dias"]+" | Futuro: "+c["Prazo futuro"],margin,32);
+const r=rep.rows.map(function(x){return enrich({...x},rep.ref_date)}),phases=rep.phases||[],ref=rep.ref_date||dateKey(today()),total=r.length;
+const statusOrder=["Atrasada","Vence hoje","Próximos 7 dias","Prazo futuro","Sem previsão"],counts=count(r);
+const vals=r.map(x=>x["Dias na Fase"]).filter(x=>x!=null),avgDays=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0,maxDays=vals.length?Math.max.apply(null,vals):0;
+const clients={},brands={},collabs={},phasesByOs={};
+r.forEach(x=>{const cl=x.Cliente||"Não informado",br=x.Marca||"Não informado";clients[cl]=(clients[cl]||0)+1;brands[br]=(brands[br]||0)+1;if(x.Colaborador)collabs[x.Colaborador]=(collabs[x.Colaborador]||0)+1;(phasesByOs[x.OS]??=[]).push(x["Fase Num"]||"-")});
+const multiOs=Object.keys(phasesByOs).filter(k=>[...new Set(phasesByOs[k])].length>1),dueOrUrgent=counts["Atrasada"]+counts["Vence hoje"]+counts["Próximos 7 dias"];
+const until3=r.filter(x=>x.Status==="Próximos 7 dias"&&x["Prev. Entrega"]&&days(ref,x["Prev. Entrega"])>=1&&days(ref,x["Prev. Entrega"])<=3).length;
+const days47=r.filter(x=>x.Status==="Próximos 7 dias"&&x["Prev. Entrega"]&&days(ref,x["Prev. Entrega"])>=4&&days(ref,x["Prev. Entrega"])<=7).length;
+const crit={};["Crítica","Alta","Média","Baixa"].forEach(k=>crit[k]=r.filter(x=>x.Criticidade===k).length);
+const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"}),W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),ML=10,MR=10,usable=W-ML-MR;
+const source=String(rep.file||"").replace(/\.pdf$/i,""),faseText=rep.multi_fase?"CONSOLIDADO | FASES "+phases.map(p=>p.fase_num).join(", "):"FASE "+(rep.fase_num||"-")+" - "+(rep.fase_nome||"-");
+const fileName="Relatorio_PCP_"+source.replace(/[^a-z0-9_-]+/gi,"_")+"_Analise_Completa.pdf";
 
-if(mode==="completo"){
-let y=40;
-y=addSectionTitle(doc,"1. Diagnóstico executivo",y);
-doc.setFont("helvetica","normal");doc.setFontSize(10);
-doc.text("A carteira possui "+r.length+" registro(s). São "+c["Atrasada"]+" atrasada(s), "+c["Vence hoje"]+" com vencimento hoje e "+c["Próximos 7 dias"]+" em acompanhamento de curto prazo.",margin,y,{maxWidth:contentW});
-const vals=r.filter(function(x){return x["Dias na Fase"]!=null}).map(function(x){return x["Dias na Fase"]}),avg=vals.length?(vals.reduce(function(a,b){return a+b},0)/vals.length).toFixed(1):"0",mx=vals.length?Math.max.apply(null,vals):0;
-doc.text("Tempo médio na fase: "+avg+" dias • Maior tempo: "+mx+" dias • Registros com início: "+vals.length+".",margin,y+5,{maxWidth:contentW});
-y+=14;
-
-y=addSectionTitle(doc,"2. Distribuição por status",y);
-const statusRows=STAT.map(function(st){return[st,c[st],r.length?(c[st]/r.length*100).toFixed(1)+"%":"0.0%"]});
-compactTable(["Status","Qtd.","Participação"],statusRows,STAT.map(function(st){return{Status:st}}),{startY:y,columnStyles:{0:{cellWidth:75},1:{cellWidth:25},2:{cellWidth:35}}});
-y=(doc.lastAutoTable&&doc.lastAutoTable.finalY?doc.lastAutoTable.finalY:y+25)+7;
-
-y=ensure(y,45,titleBase);
-y=addSectionTitle(doc,"3. O.S. atrasadas • prioridade por Dias na Fase",y);
-const late=r.filter(function(x){return x.Status==="Atrasada"}).sort(function(a,b){return(b["Dias na Fase"]||0)-(a["Dias na Fase"]||0)});
-compactTable(["O.S.","Etapa","Cliente","Prev.","Dias","Colaborador","Motivo"],late.map(function(x){return[x.OS,x["Fase Nome"],x.Cliente||"N/I",dateFmt(x["Prev. Entrega"]),x["Dias na Fase"]??"-",x.Colaborador||"Não informado",x["Motivo Atraso"]||"-"]}),late,{startY:y,columnStyles:{0:{cellWidth:18},1:{cellWidth:42},2:{cellWidth:48},3:{cellWidth:27},4:{cellWidth:18},5:{cellWidth:40},6:{cellWidth:90}}});
-y=(doc.lastAutoTable&&doc.lastAutoTable.finalY?doc.lastAutoTable.finalY:y+20)+7;
-
-y=ensure(y,45,titleBase+" • Tempo e equipe");
-y=addSectionTitle(doc,"4. Tempo na fase por O.S.",y);
-const withStart=[...r].sort(function(a,b){return(b["Dias na Fase"]??-1)-(a["Dias na Fase"]??-1)});
-compactTable(["O.S.","Etapa","Início","Dias","Status","Colaborador","Motivo"],withStart.map(function(x){return[x.OS,x["Fase Nome"],x["Data Início"]?dateFmt(x["Data Início"]):"-",x["Dias na Fase"]??"-",x.Status,x.Colaborador||"Não informado",x["Motivo Atraso"]||"-"]}),withStart,{startY:y,columnStyles:{0:{cellWidth:18},1:{cellWidth:40},2:{cellWidth:28},3:{cellWidth:15},4:{cellWidth:25},5:{cellWidth:42},6:{cellWidth:95}}});
-y=(doc.lastAutoTable&&doc.lastAutoTable.finalY?doc.lastAutoTable.finalY:y+20)+7;
-
-y=ensure(y,35,titleBase+" • Equipe");
-y=addSectionTitle(doc,"5. Colaboradores",y);
-const coll={};r.forEach(function(x){if(x.Colaborador)coll[x.Colaborador]=(coll[x.Colaborador]||0)+1});
-const cr=Object.entries(coll).sort(function(a,b){return b[1]-a[1]});
-compactTable(["Colaborador","Registros"],cr.length?cr.map(function(x){return[x[0],x[1]]}):[["Nenhum nome identificado",0]],cr.map(function(){return{}}),{startY:y,columnStyles:{0:{cellWidth:220},1:{cellWidth:55}}});
-y=(doc.lastAutoTable&&doc.lastAutoTable.finalY?doc.lastAutoTable.finalY:y+20)+7;
-
-const clients={},brands={};r.forEach(function(x){const cl=x.Cliente||"Não informado",br=x.Marca||"Não informado";clients[cl]=(clients[cl]||0)+1;brands[br]=(brands[br]||0)+1});
-y=ensure(y,55,titleBase+" • Clientes e marcas");
-y=addSectionTitle(doc,"6. Clientes",y);
-const clrows=Object.entries(clients).sort(function(a,b){return b[1]-a[1]});
-compactTable(["Cliente","O.S.","%"],clrows.map(function(x){return[x[0],x[1],r.length?(x[1]/r.length*100).toFixed(1)+"%":"0.0%"]}),clrows.map(function(){return{}}),{startY:y,fontSize:9.2,columnStyles:{0:{cellWidth:225},1:{cellWidth:28},2:{cellWidth:28}}});
-y=(doc.lastAutoTable&&doc.lastAutoTable.finalY?doc.lastAutoTable.finalY:y+20)+6;
-
-y=ensure(y,45,titleBase+" • Marcas");
-y=addSectionTitle(doc,"7. Marcas",y);
-const brrows=Object.entries(brands).sort(function(a,b){return b[1]-a[1]});
-compactTable(["Marca","O.S.","%"],brrows.map(function(x){return[x[0],x[1],r.length?(x[1]/r.length*100).toFixed(1)+"%":"0.0%"]}),brrows.map(function(){return{}}),{startY:y,fontSize:9.2,columnStyles:{0:{cellWidth:225},1:{cellWidth:28},2:{cellWidth:28}}});
-y=(doc.lastAutoTable&&doc.lastAutoTable.finalY?doc.lastAutoTable.finalY:y+20)+7;
-
-y=ensure(y,80,titleBase+" • Base completa");
-y=addSectionTitle(doc,"8. Base completa • identificação das O.S.",y);
-compactTable(["O.S.","Etapa","Cliente","Marca","Pot.","Tensão","Motivo"],r.map(function(x){return[x.OS,x["Fase Nome"],x.Cliente||"N/I",x.Marca||"N/I",x["Potência"]||"N/I",x["Tensão"]||"N/I",x["Motivo Atraso"]||"-"]}),r,{startY:y,columnStyles:{0:{cellWidth:18},1:{cellWidth:40},2:{cellWidth:52},3:{cellWidth:25},4:{cellWidth:22},5:{cellWidth:28},6:{cellWidth:98}}});
-y=(doc.lastAutoTable&&doc.lastAutoTable.finalY?doc.lastAutoTable.finalY:y+30)+7;
-
-y=ensure(y,70,titleBase+" • Controle PCP");
-y=addSectionTitle(doc,"9. Controle de prazo e execução",y);
-compactTable(["O.S.","Prev.","Status","Colaborador","Entrada","Dias","Motivo","OBS"],r.map(function(x){return[x.OS,dateFmt(x["Prev. Entrega"]),x.Status,x.Colaborador||"Não informado",x["Data Início"]?dateFmt(x["Data Início"]):"-",x["Dias na Fase"]??"-",x["Motivo Atraso"]||"-",""]}),r,{startY:y,keepLastWhite:true,columnStyles:{0:{cellWidth:18},1:{cellWidth:25},2:{cellWidth:28},3:{cellWidth:42},4:{cellWidth:25},5:{cellWidth:18},6:{cellWidth:70},7:{cellWidth:55}}});
-}else{
-let y=35;
-y=addSectionTitle(doc,"Base do relatório",y);
-compactTable(["O.S.","Etapa","Cliente","Marca","Pot.","Tensão","Prev.","Status","Motivo"],r.map(function(x){return[x.OS,x["Fase Nome"],x.Cliente||"N/I",x.Marca||"N/I",x["Potência"]||"N/I",x["Tensão"]||"N/I",dateFmt(x["Prev. Entrega"]),x.Status,x["Motivo Atraso"]||"-"]}),r,{startY:y,fontSize:9.2,columnStyles:{0:{cellWidth:18},1:{cellWidth:38},2:{cellWidth:48},3:{cellWidth:25},4:{cellWidth:18},5:{cellWidth:20},6:{cellWidth:28},7:{cellWidth:35},8:{cellWidth:53}}});
-y=(doc.lastAutoTable&&doc.lastAutoTable.finalY?doc.lastAutoTable.finalY:y+25)+8;
-if(y>240){doc.addPage();pageTitle(title+" • Execução");y=38}else{y=addSectionTitle(doc,"Execução",y)}
-compactTable(["O.S.","Colaborador","Entrada","Dias","Motivo","OBS"],r.map(function(x){return[x.OS,x.Colaborador||"Não informado",x["Data Início"]?dateFmt(x["Data Início"]):"-",x["Dias na Fase"]??"-",x["Motivo Atraso"]||"-",""]}),r,{startY:y,keepLastWhite:true,fontSize:9.2,columnStyles:{0:{cellWidth:18},1:{cellWidth:55},2:{cellWidth:28},3:{cellWidth:18},4:{cellWidth:100},5:{cellWidth:64}}})
+function header(){
+  doc.setFillColor(255,255,255);doc.rect(0,0,W,14,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(18);doc.setTextColor(23,58,94);doc.text("ANÁLISE PCP | "+faseText,W/2,9,{align:"center"});
+  doc.setDrawColor(210,218,226);doc.line(10,13,W-10,13);
 }
-pdfFoot(doc);previewPdf(doc,fileName,r.length)}
+function footer(){
+  const n=doc.getNumberOfPages();for(let p=1;p<=n;p++){doc.setPage(p);doc.setDrawColor(217,226,236);doc.line(10,H-9,W-10,H-9);doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(107,119,133);doc.text("Fonte: "+source+" | Referência "+(rep.referencia||"-"),10,H-5.5);doc.text("Página "+p,W-10,H-5.5,{align:"right"});}
+}
+function section(text){
+  const y=doc.lastAutoTable&&doc.lastAutoTable.finalY?doc.lastAutoTable.finalY+6:18;
+  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text(text,10,y);return y+4;
+}
+function body(text,y,maxW=usable){
+  doc.setFont("helvetica","normal");doc.setFontSize(7.8);doc.setTextColor(38,52,66);
+  const lines=doc.splitTextToSize(String(text||""),maxW);doc.text(lines,10,y,{lineHeightFactor:1.3});return y+lines.length*3.3;
+}
+function table(head,bodyRows,opts){
+  opts=opts||{};autoTable(doc,{head:[head],body:bodyRows,startY:opts.startY||20,theme:"grid",tableWidth:opts.tableWidth||"auto",margin:{left:opts.left||10,right:opts.right||10,top:16,bottom:14},styles:{fontSize:opts.fontSize||6.2,cellPadding:opts.padding||1.25,overflow:"linebreak",valign:"middle",lineWidth:.2,textColor:[38,52,66]},headStyles:{fillColor:opts.headColor||[23,58,94],textColor:255,fontStyle:"bold",fontSize:opts.headFont||5.8,cellPadding:1.35},columnStyles:opts.columnStyles||{},didParseCell:function(d){if(d.section==="body"&&opts.rows){const rr=opts.rows[d.row.index];if(rr){if(rr.Status==="Atrasada")d.cell.styles.fillColor=[252,228,228];else if(rr.Status==="Vence hoje")d.cell.styles.fillColor=[255,242,204];else if(rr.Status==="Próximos 7 dias")d.cell.styles.fillColor=[255,248,225];else if(rr.Status==="Sem previsão")d.cell.styles.fillColor=[244,246,248];}}}});
+  return doc.lastAutoTable.finalY;
+}
+function pageIf(y,need){if(y+need>H-15){doc.addPage();header();return 19}return y}
+function pct(n){return total?(n/total*100).toFixed(1)+"%":"0.0%"}
+function late(x){return x["Prev. Entrega"]&&x["Prev. Entrega"]<ref?days(x["Prev. Entrega"],ref):0}
+function sortedPriority(){return [...r].sort((a,b)=>{const sa=a.Status==="Atrasada"?0:a.Status==="Vence hoje"?1:a.Status==="Próximos 7 dias"?2:3,sb=b.Status==="Atrasada"?0:b.Status==="Vence hoje"?1:b.Status==="Próximos 7 dias"?2:3;return sa-sb||(late(b)-late(a))||((b["Dias na Fase"]||0)-(a["Dias na Fase"]||0))})}
+
+header();
+doc.setFont("helvetica","bold");doc.setFontSize(7.8);doc.setTextColor(70,78,88);
+doc.text((rep.multi_fase?"FASES ANALISADAS: ":"FASE "+(rep.fase_num||"-")+": ")+(rep.multi_fase?phases.map(p=>(p.fase_num||"-")+" - "+(p.fase_nome||"-")).join(" | "):(rep.fase_nome||"-")),10,19,{maxWidth:usable});
+doc.setFont("helvetica","normal");doc.setFontSize(7.2);doc.setTextColor(94,107,120);
+doc.text("Arquivo: "+source+" | Fases identificadas: "+phases.length+" | Registros: "+total+" | Emissão: "+(rep.emissao?new Date(rep.emissao).toLocaleString("pt-BR"):"-")+" | Data-base da análise: "+dateFmt(ref),10,24,{maxWidth:usable});
+let y=30;
+
+doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("1. Visão executiva",10,y);y+=4;
+const k1=[["REGISTROS","FASES","ATRASADAS","VENCEM HOJE","ATÉ 3 DIAS","4-7 DIAS","SEM PREVISÃO"],[total,phases.length,counts["Atrasada"],counts["Vence hoje"],until3,days47,counts["Sem previsão"]]];
+table(k1[0],k1[1],{startY:y,left:17,right:17,tableWidth:176,fontSize:6.1,headFont:5.5,padding:1.3,columnStyles:{0:{cellWidth:27},1:{cellWidth:19},2:{cellWidth:25},3:{cellWidth:27},4:{cellWidth:25},5:{cellWidth:25},6:{cellWidth:28}}});
+y=doc.lastAutoTable.finalY+3;
+table(["TEMPO MÉDIO NA FASE","MAIOR TEMPO","COM INÍCIO","OS EM MAIS DE UMA FASE","URGENTES"],[[avgDays.toFixed(1)+" dias",maxDays+" dias",String(vals.length),String(multiOs.length),String(dueOrUrgent)]],{startY:y,left:17,right:17,tableWidth:161,fontSize:6.1,headFont:5.5,padding:1.3,columnStyles:{0:{cellWidth:35},1:{cellWidth:28},2:{cellWidth:27},3:{cellWidth:40},4:{cellWidth:31}}});
+y=doc.lastAutoTable.finalY+5;
+doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(42,87,125);doc.text("Leitura do PCP",10,y);y+=4;
+let diag="A carteira analisada possui "+total+" registros distribuídos em "+phases.length+" fase(s). Há "+counts["Atrasada"]+" atrasados ("+pct(counts["Atrasada"])+"), "+counts["Vence hoje"]+" com vencimento hoje e "+counts["Próximos 7 dias"]+" previstos para os próximos 7 dias. Somando esses grupos, "+dueOrUrgent+" registros exigem ação de curto prazo. "+vals.length+" registros possuem início de fase e o tempo médio calculado a partir desses registros é de "+avgDays.toFixed(1)+" dias. ";
+diag+=multiOs.length?"Há "+multiOs.length+" OS repetidas em duas ou mais fases, o que permite acompanhar o avanço delas pelo fluxo. ":"";
+const unplanned=r.filter(x=>!x["Prev. Entrega"]).length;diag+=unplanned?"Também foram encontrados "+unplanned+" registros sem previsão de entrega; eles merecem validação de prazo.":"Todos os registros possuem previsão de entrega no relatório de origem.";
+y=body(diag,y)+3;
+
+y=pageIf(y,40);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("2. Análise individual por fase",10,y);y+=4;
+const phaseRows=[["Fase","Descrição","OS","Atras.","Críticas","Hoje","Próx. 7d","Futuro","Média dias"]];
+phases.forEach(ph=>{const pr=ph.rows||r.filter(x=>x["Fase Num"]===String(ph.fase_num));const pc=count(pr),tv=pr.map(x=>x["Dias na Fase"]).filter(x=>x!=null),av=tv.length?tv.reduce((a,b)=>a+b,0)/tv.length:0;phaseRows.push([ph.fase_num||"-",ph.fase_nome||"-",pr.length,pc["Atrasada"],pr.filter(x=>x.Criticidade==="Crítica").length,pc["Vence hoje"],pc["Próximos 7 dias"],pc["Prazo futuro"],av.toFixed(1)])});
+y=table(phaseRows[0],phaseRows.slice(1),{startY:y,fontSize:6.1,headFont:5.7,padding:1.2,columnStyles:{0:{cellWidth:12},1:{cellWidth:63},2:{cellWidth:12},3:{cellWidth:13},4:{cellWidth:15},5:{cellWidth:13},6:{cellWidth:17},7:{cellWidth:15},8:{cellWidth:20}}})+5;
+
+y=pageIf(y,55);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("3. Fila de prioridades do PCP",10,y);y+=4;
+y=body("Ordenação sugerida para a atuação: primeiro atrasos, depois vencimentos imediatos e, por fim, maior tempo acumulado na fase. A lista abaixo serve como fila operacional e não substitui decisões específicas de produção, material ou qualidade.",y)+3;
+const prio=sortedPriority().slice(0,20),ph=[["#","Etapa","OS","Cliente","Prev.","Status","Criticidade","Dias atraso","Dias na fase","Colaborador","OBS"]];
+prio.forEach((x,i)=>ph.push([i+1,x["Fase Nome"]||"-",x.OS||"-",x.Cliente||"N/I",dateFmt(x["Prev. Entrega"]),x.Status||"-",x.Criticidade||"-",late(x),x["Dias na Fase"]??"-",x.Colaborador||"Não informado",""]));
+y=table(ph[0],ph.slice(1),{startY:y,fontSize:5.9,headFont:5.5,padding:1.05,rows:prio,columnStyles:{0:{cellWidth:6},1:{cellWidth:24},2:{cellWidth:11},3:{cellWidth:30},4:{cellWidth:18},5:{cellWidth:19},6:{cellWidth:18},7:{cellWidth:16},8:{cellWidth:16},9:{cellWidth:18},10:{cellWidth:14}}})+5;
+
+y=pageIf(y,50);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("4. Aging: tempo das OS na fase",10,y);y+=4;
+const aging=[["Faixa","Registros","%","Leitura PCP"],["0 a 3 dias",r.filter(x=>x["Dias na Fase"]!=null&&x["Dias na Fase"]<=3).length,"","Normal"],["4 a 7 dias",r.filter(x=>x["Dias na Fase"]!=null&&x["Dias na Fase"]>=4&&x["Dias na Fase"]<=7).length,"","Atenção"],["8 a 14 dias",r.filter(x=>x["Dias na Fase"]!=null&&x["Dias na Fase"]>=8&&x["Dias na Fase"]<=14).length,"","Crítico"],["15+ dias",r.filter(x=>x["Dias na Fase"]!=null&&x["Dias na Fase"]>=15).length,"","Crítico"],["Sem início",r.filter(x=>x["Dias na Fase"]==null).length,"","Validar informação"]];
+for(let i=1;i<aging.length;i++)aging[i][2]=pct(Number(aging[i][1]));
+y=table(aging[0],aging.slice(1),{startY:y,fontSize:6.5,headFont:5.8,padding:1.2,columnStyles:{0:{cellWidth:34},1:{cellWidth:25},2:{cellWidth:25},3:{cellWidth:77}}})+4;
+doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(42,87,125);doc.text("15 maiores tempos na fase",10,y);y+=3;
+const ag=[["Etapa","OS","Cliente","Início","Dias","Status","Colaborador","OBS"]],agingRows=[...r].sort((a,b)=>(b["Dias na Fase"]??-1)-(a["Dias na Fase"]??-1)).slice(0,15);
+agingRows.forEach(x=>ag.push([x["Fase Nome"]||"-",x.OS||"-",x.Cliente||"N/I",x["Data Início"]?dateFmt(x["Data Início"]):"-",x["Dias na Fase"]??"-",x.Status||"-",x.Colaborador||"Não informado",""]));
+y=table(ag[0],ag.slice(1),{startY:y,fontSize:6,headFont:5.7,padding:1.05,rows:agingRows,columnStyles:{0:{cellWidth:28},1:{cellWidth:11},2:{cellWidth:39},3:{cellWidth:24},4:{cellWidth:14},5:{cellWidth:24},6:{cellWidth:20},7:{cellWidth:24}}})+5;
+
+y=pageIf(y,48);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("5. Calendário de vencimentos",10,y);y+=4;
+const buckets=[["Atrasadas","Atrasada"],["Hoje","Vence hoje"],["Próximos 7 dias","Próximos 7 dias"],["Mais de 7 dias","Prazo futuro"],["Sem previsão","Sem previsão"]],due=[["Janela","Qtd.","%","Primeira observação"]];
+buckets.forEach(b=>{const sub=r.filter(x=>x.Status===b[1]);const ord=[...sub].sort((a,z)=>(a["Prev. Entrega"]||"9999").localeCompare(z["Prev. Entrega"]||"9999"));due.push([b[0],sub.length,pct(sub.length),sub.length?"OS "+ord[0].OS+" | "+dateFmt(ord[0]["Prev. Entrega"]):"-"])});
+y=table(due[0],due.slice(1),{startY:y,fontSize:6.5,headFont:5.8,padding:1.2,columnStyles:{0:{cellWidth:42},1:{cellWidth:20},2:{cellWidth:24},3:{cellWidth:74}}})+5;
+
+y=pageIf(y,45);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("6. Distribuição por colaborador",10,y);y+=4;
+const cr=[["Colaborador","Registros","%","Atrasadas"]];Object.entries(collabs).sort((a,b)=>b[1]-a[1]).forEach(([name,n])=>cr.push([name,n,pct(n),r.filter(x=>x.Colaborador===name&&x.Status==="Atrasada").length]));const miss=r.filter(x=>!x.Colaborador).length;if(miss)cr.push(["Sem colaborador identificado",miss,pct(miss),r.filter(x=>!x.Colaborador&&x.Status==="Atrasada").length]);if(cr.length===1)cr.push(["Nenhum nome identificado",0,"0.0%",0]);
+y=table(cr[0],cr.slice(1),{startY:y,fontSize:6.5,headFont:5.8,padding:1.2,columnStyles:{0:{cellWidth:75},1:{cellWidth:27},2:{cellWidth:25},3:{cellWidth:27}}})+5;
+
+y=pageIf(y,45);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("7. Perfil da carteira: clientes e marcas",10,y);y+=4;
+const cl=[["Top clientes","OS"]];Object.entries(clients).sort((a,b)=>b[1]-a[1]).slice(0,12).forEach(x=>cl.push([x[0],x[1]]));
+const br=[["Marcas","OS","%"]];Object.entries(brands).sort((a,b)=>b[1]-a[1]).forEach(x=>br.push([x[0],x[1],pct(x[1])]));
+autoTable(doc,{head:[cl[0]],body:cl.slice(1),startY:y,theme:"grid",margin:{left:10,top:16,bottom:14},styles:{fontSize:6,cellPadding:1.05},headStyles:{fillColor:[42,87,125],textColor:255},columnStyles:{0:{cellWidth:58},1:{cellWidth:16}}});
+const ly=doc.lastAutoTable.finalY;
+autoTable(doc,{head:[br[0]],body:br.slice(1),startY:y,theme:"grid",margin:{left:96,top:16,bottom:14},styles:{fontSize:6,cellPadding:1.05},headStyles:{fillColor:[42,87,125],textColor:255},columnStyles:{0:{cellWidth:42},1:{cellWidth:18},2:{cellWidth:20}}});
+y=Math.max(ly,doc.lastAutoTable.finalY)+5;
+
+y=pageIf(y,45);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("8. OS presentes em mais de uma fase",10,y);y+=4;
+const mr=[["OS","Fases encontradas","Qtd. fases","Leitura"]];
+multiOs.forEach(os=>{const uniq=[...new Set(phasesByOs[os])];mr.push([os,uniq.join(", "),uniq.length,uniq.length>1?"Acompanhar movimentação entre etapas":"-"])});
+if(mr.length===1)mr.push(["-","Nenhuma OS repetida em mais de uma fase foi encontrada neste documento.","0","-"]);
+y=table(mr[0],mr.slice(1),{startY:y,fontSize:6.4,headFont:5.8,padding:1.15,columnStyles:{0:{cellWidth:24},1:{cellWidth:45},2:{cellWidth:25},3:{cellWidth:64}}})+5;
+
+y=pageIf(y,55);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("9. Detalhamento operacional por fase",10,y);y+=4;
+phases.forEach(phx=>{y=pageIf(y,40);doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(42,87,125);doc.text("Fase "+(phx.fase_num||"-")+" - "+(phx.fase_nome||"-"),10,y);y+=3;
+const pRows=phx.rows||r.filter(x=>x["Fase Num"]===String(phx.fase_num)),pc=count(pRows),ptv=pRows.map(x=>x["Dias na Fase"]).filter(x=>x!=null),pav=ptv.length?ptv.reduce((a,b)=>a+b,0)/ptv.length:0,pmax=ptv.length?Math.max.apply(null,ptv):0;
+y=body("Registros: "+pRows.length+" | Atrasadas: "+pc["Atrasada"]+" | Hoje: "+pc["Vence hoje"]+" | Próx. 7d: "+pc["Próximos 7 dias"]+" | Tempo médio: "+pav.toFixed(1)+" dias | Maior tempo: "+pmax+" dias.",y)+2;
+const ps=[...pRows].sort((a,b)=>(a.Status==="Atrasada"?0:1)-(b.Status==="Atrasada"?0:1)||late(b)-late(a)).slice(0,8),prh=[["OS","Cliente","Marca","Prev.","Status","Criticidade","Dias atraso","Dias fase","Colaborador","OBS"]];
+ps.forEach(x=>prh.push([x.OS||"-",x.Cliente||"N/I",x.Marca||"N/I",dateFmt(x["Prev. Entrega"]),x.Status||"-",x.Criticidade||"-",late(x),x["Dias na Fase"]??"-",x.Colaborador||"Não informado",""]));
+y=table(prh[0],prh.slice(1),{startY:y,fontSize:5.6,headFont:5.5,padding:1,rows:ps,columnStyles:{0:{cellWidth:11},1:{cellWidth:31},2:{cellWidth:13},3:{cellWidth:17},4:{cellWidth:20},5:{cellWidth:20},6:{cellWidth:15},7:{cellWidth:15},8:{cellWidth:19},9:{cellWidth:19}}})+5;
+});
+
+y=pageIf(y,35);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("10. Alertas e qualidade dos dados",10,y);y+=4;
+const quality=[],noCollab=r.filter(x=>!x.Colaborador).length,noStart=r.filter(x=>!x["Data Início"]).length,noPower=r.filter(x=>!x["Potência"]).length,noBrand=r.filter(x=>!x.Marca).length;
+if(unplanned)quality.push(unplanned+" registros sem previsão de entrega.");if(noCollab)quality.push(noCollab+" registros sem colaborador identificado como pessoa.");if(noStart)quality.push(noStart+" registros sem data de início de fase utilizável.");if(noPower)quality.push(noPower+" registros sem potência informada.");if(noBrand)quality.push(noBrand+" registros sem marca identificada.");if(!quality.length)quality.push("Nenhum alerta básico de qualidade foi detectado nos campos analisados.");
+y=body(quality.join(" "),y)+2;y=body("Observação sobre colaboradores: descrições operacionais como BOMBA ABS, BOMBA FLYGT, BOMBAS KSB e MOTOR/BOMBA não são tratadas como nomes de colaboradores.",y)+5;
+
+y=pageIf(y,60);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("11. Base completa | "+total+" registros",10,y);y+=4;
+const ordered=[...r].sort((a,b)=>(+a["Fase Num"]||0)-(+b["Fase Num"]||0)||(+a.OS||0)-(+b.OS||0)),full=[["Etapa","OS","Cliente","Marca","Pot.","Prev.","Status","Colab.","Entrada","Dias","OBS"]];
+ordered.forEach(x=>full.push([x["Fase Nome"]||"-",x.OS||"-",x.Cliente||"N/I",x.Marca||"N/I",x["Potência"]||"N/I",dateFmt(x["Prev. Entrega"]),x.Status||"-",x.Colaborador||"Não informado",x["Data Início"]?dateFmt(x["Data Início"]):"-",x["Dias na Fase"]??"-",""]));
+y=table(full[0],full.slice(1),{startY:y,fontSize:5.1,headFont:5.2,padding:.85,rows:ordered,columnStyles:{0:{cellWidth:22},1:{cellWidth:10},2:{cellWidth:23},3:{cellWidth:10},4:{cellWidth:9},5:{cellWidth:17},6:{cellWidth:19},7:{cellWidth:19},8:{cellWidth:22},9:{cellWidth:10},10:{cellWidth:19}}})+5;
+
+y=pageIf(y,40);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("12. Recomendações de atuação do PCP",10,y);y+=4;
+const rec=[];if(counts["Atrasada"])rec.push("Atacar primeiro as "+counts["Atrasada"]+" OS atrasadas, registrando causa do atraso e nova previsão realista.");if(counts["Vence hoje"])rec.push("Confirmar hoje a execução das "+counts["Vence hoje"]+" OS com vencimento imediato.");if(counts["Próximos 7 dias"])rec.push("Reservar capacidade para as "+counts["Próximos 7 dias"]+" OS dos próximos 7 dias antes que entrem em atraso.");const longA=r.filter(x=>(x["Dias na Fase"]||0)>=8).length;if(longA)rec.push("Revisar as "+longA+" OS com 8 dias ou mais na fase para identificar gargalo, espera ou falta de material/informação.");if(unplanned)rec.push("Validar prazo das "+unplanned+" OS sem previsão para evitar carteira sem horizonte de entrega.");if(multiOs.length)rec.push("Acompanhar as "+multiOs.length+" OS presentes em mais de uma fase para evitar que o avanço entre etapas fique sem sequência.");rec.push("Usar a base completa deste relatório como ponto de partida para a programação diária e para a reunião de produção.");
+const rr=[["#","Ação"]];rec.forEach((x,i)=>rr.push([i+1,x]));table(rr[0],rr.slice(1),{startY:y,fontSize:6.6,headFont:5.8,padding:1.2,columnStyles:{0:{cellWidth:10},1:{cellWidth:150}}});
+
+footer();
+previewPdf(doc,fileName,total);
+}
 function makeQueryPdf(r){const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});pdfHeader(doc,"CONSULTA PCP ESA",state.qdesc||"Consulta");addTable(doc,["O.S.","Etapa","Cliente","Prev.","Atraso","Dias","Status","Motivo"],r.map(function(x){return[x.OS,x["Fase Nome"],x.Cliente||"N/I",dateFmt(x["Prev. Entrega"]),x["Prev. Entrega"]&&x["Prev. Entrega"]<refDate()?days(x["Prev. Entrega"],refDate()):0,x["Dias na Fase"]??"-",x.Status,x["Motivo Atraso"]||"-"]}),r,{startY:32,fontSize:9.2,cellPadding:2.4,columnStyles:{0:{cellWidth:25},1:{cellWidth:84},2:{cellWidth:74},3:{cellWidth:25},4:{cellWidth:16},5:{cellWidth:15},6:{cellWidth:28},7:{cellWidth:16}}});let y=(doc.lastAutoTable&&doc.lastAutoTable.finalY?doc.lastAutoTable.finalY:100)+8;if(y<245){addSectionTitle(doc,"Responsáveis e acompanhamento",y);addTable(doc,["O.S.","Criticidade","Colaborador","Motivo","OBS"],r.map(function(x){return[x.OS,x.Criticidade,x.Colaborador||"Não informado",x["Motivo Atraso"]||"-",""]}),r,{startY:y+5,keepLastWhite:true,fontSize:9.2,cellPadding:2.4,columnStyles:{0:{cellWidth:24},1:{cellWidth:35},2:{cellWidth:58},3:{cellWidth:78},4:{cellWidth:81}}})}else{doc.addPage();pdfHeader(doc,"CONSULTA PCP ESA • RESPONSÁVEIS",state.qdesc||"Consulta");addTable(doc,["O.S.","Criticidade","Colaborador","Motivo","OBS"],r.map(function(x){return[x.OS,x.Criticidade,x.Colaborador||"Não informado",x["Motivo Atraso"]||"-",""]}),r,{startY:32,keepLastWhite:true,fontSize:9.2,cellPadding:2.4,columnStyles:{0:{cellWidth:18},1:{cellWidth:30},2:{cellWidth:48},3:{cellWidth:52},4:{cellWidth:34}}})}pdfFoot(doc);previewPdf(doc,"Consulta_PCP_"+dateKey(new Date())+".pdf",r.length)}
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(window.__tt);window.__tt=setTimeout(()=>t.classList.remove("on"),2800)}
 async function handleFiles(files){for(const f of Array.from(files)){try{$("#topStatus").textContent="Lendo "+f.name+"...";state.reports.push(await readPdf(f));toast("Importado: "+f.name)}catch(e){console.error(e);toast("Erro em "+f.name+": "+e.message)}}save();$("#topStatus").textContent="Pronto";render()}
