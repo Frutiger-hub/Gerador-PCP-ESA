@@ -138,10 +138,39 @@ doc.text("Arquivo: "+source+" | Fases identificadas: "+phases.length+" | Registr
 let y=30;
 
 doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(23,58,94);doc.text("1. Visão executiva",10,y);y+=4;
-const k1=[["REGISTROS","FASES","ATRASADAS","VENCEM HOJE","ATÉ 3 DIAS","4-7 DIAS","SEM PREVISÃO"],[total,phases.length,counts["Atrasada"],counts["Vence hoje"],until3,days47,counts["Sem previsão"]]];
-table(k1[0],k1[1],{startY:y,left:17,right:17,tableWidth:176,fontSize:6.1,headFont:5.5,padding:1.3,columnStyles:{0:{cellWidth:27},1:{cellWidth:19},2:{cellWidth:25},3:{cellWidth:27},4:{cellWidth:25},5:{cellWidth:25},6:{cellWidth:28}}});
+function executiveTable(head,values,opts){
+  opts=opts||{};
+  const fill=opts.fill||[255,255,255];
+  autoTable(doc,{
+    head:[head],
+    body:[values],
+    startY:opts.startY,
+    margin:{left:opts.left||10,right:opts.right||10,top:16,bottom:14},
+    tableWidth:opts.tableWidth||"auto",
+    theme:"grid",
+    styles:{fontSize:opts.bodyFont||8.2,fontStyle:"bold",cellPadding:opts.padding||2.2,halign:"center",valign:"middle",lineWidth:.25,lineColor:[205,214,223],textColor:[30,39,48],minCellHeight:opts.minCellHeight||11},
+    headStyles:{fillColor:[232,237,243],textColor:[30,39,48],fontStyle:"bold",fontSize:opts.headFont||5.5,halign:"center",valign:"middle",cellPadding:1.4,lineColor:[205,214,223],lineWidth:.25},
+    bodyStyles:{fillColor:fill},
+    columnStyles:opts.columnStyles||{},
+    didParseCell:function(d){
+      if(d.section==="body"&&opts.bodyFills&&opts.bodyFills[d.column.index])d.cell.styles.fillColor=opts.bodyFills[d.column.index];
+    }
+  });
+  return doc.lastAutoTable.finalY;
+}
+const execHead=["REGISTROS","FASES","ATRASADAS","VENCEM HOJE","ATÉ 3 DIAS","4-7 DIAS","SEM PREVISÃO"];
+const execValues=[total,phases.length,counts["Atrasada"],counts["Vence hoje"],until3,days47,counts["Sem previsão"]];
+y=executiveTable(execHead,execValues,{startY:y,left:17,right:17,tableWidth:176,bodyFont:9.4,headFont:5.5,padding:2.0,minCellHeight:11.5,
+  columnStyles:{0:{cellWidth:25.1},1:{cellWidth:25.1},2:{cellWidth:25.1},3:{cellWidth:25.1},4:{cellWidth:25.1},5:{cellWidth:25.1},6:{cellWidth:25.1}},
+  bodyFills:{2:[252,228,228],3:[255,244,209],4:[255,244,209],5:[255,244,209]}
+});
 y=doc.lastAutoTable.finalY+3;
-table(["TEMPO MÉDIO NA FASE","MAIOR TEMPO","COM INÍCIO","OS EM MAIS DE UMA FASE","URGENTES"],[[avgDays.toFixed(1)+" dias",maxDays+" dias",String(vals.length),String(multiOs.length),String(dueOrUrgent)]],{startY:y,left:17,right:17,tableWidth:161,fontSize:6.1,headFont:5.5,padding:1.3,columnStyles:{0:{cellWidth:35},1:{cellWidth:28},2:{cellWidth:27},3:{cellWidth:40},4:{cellWidth:31}}});
+y=executiveTable(
+  ["TEMPO MÉDIO NA FASE","MAIOR TEMPO","COM INÍCIO","OS EM MAIS DE UMA FASE","URGENTES"],
+  [avgDays.toFixed(1)+" dias",maxDays+" dias",String(vals.length),String(multiOs.length),String(dueOrUrgent)],
+  {startY:y,left:24,right:24,tableWidth:162,bodyFont:9.2,headFont:5.4,padding:2.0,minCellHeight:11.5,
+   columnStyles:{0:{cellWidth:34},1:{cellWidth:28},2:{cellWidth:30},3:{cellWidth:40},4:{cellWidth:30}}}
+);
 y=doc.lastAutoTable.finalY+5;
 doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(42,87,125);doc.text("Leitura do PCP",10,y);y+=4;
 let diag="A carteira analisada possui "+total+" registros distribuídos em "+phases.length+" fase(s). Há "+counts["Atrasada"]+" atrasados ("+pct(counts["Atrasada"])+"), "+counts["Vence hoje"]+" com vencimento hoje e "+counts["Próximos 7 dias"]+" previstos para os próximos 7 dias. Somando esses grupos, "+dueOrUrgent+" registros exigem ação de curto prazo. "+vals.length+" registros possuem início de fase e o tempo médio calculado a partir desses registros é de "+avgDays.toFixed(1)+" dias. ";
